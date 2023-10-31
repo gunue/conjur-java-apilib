@@ -1,0 +1,71 @@
+### SECRET PATH AND AUTHN TOKEN FILE LOCATION GIVEN HERE
+### AUTHN IS SIDECAR
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: oc-test-app4-api-sidecar-java
+  name: oc-test-app4-api-sidecar-java
+  namespace: test-app-namespace-2
+spec:
+  selector:
+    matchLabels:
+      app: oc-test-app4-api-sidecar-java
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: oc-test-app4-api-sidecar-java
+    spec:
+      serviceAccountName: oc-test-app-sa2
+      containers:
+        - name: oc-test-app4-api-sidecar-java
+          image: harbor.swo.local/engin/test-app-api-sidecar:javalib
+          imagePullPolicy: Always
+          args:
+          - java
+          - -jar
+          - /app/SecretFetcher-1.0-SNAPSHOT-jar-with-dependencies.jar
+          envFrom:
+          - configMapRef:
+              name: conjur-connect
+          volumeMounts:
+          - mountPath: /run/conjur
+            name: conjur-access-token
+            readOnly: true
+          - name: ssl-certificate-volume
+            mountPath: /tmp/conjur-connect
+            readOnly: false
+          env:
+          - name: CONJUR_AUTHN_TOKEN_FILE
+            value: /run/conjur/access-token
+          - name: SECRET0_PATH
+            value: secrets/connection_str
+
+        - image: harbor.swo.local/engin/conjur-authn-k8s-client:latest
+          imagePullPolicy: Always
+          name: authenticator
+          env:
+            - name: CONJUR_AUTHN_LOGIN
+              value: host/conjur/authn-k8s/hub-swo-local-cluster/apps/oc-test-app4-api-sidecar-java
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          envFrom:
+            - configMapRef:
+                name: conjur-connect
+          volumeMounts:
+            - mountPath: /run/conjur
+              name: conjur-access-token
+      volumes:
+        - name: conjur-access-token
+          emptyDir:
+            medium: Memory
+        - name: ssl-certificate-volume
+          configMap:
+            name: rootca
